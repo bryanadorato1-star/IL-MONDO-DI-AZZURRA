@@ -23,8 +23,8 @@ jobs:
 
       - name: Find Gradle project
         run: |
-          GRADLEW=$(find project -type f -name gradlew | head -n 1)
-          ROOT=$(dirname "$GRADLEW")
+          GRADLE=$(find project -type f -name "gradlew" | head -n 1)
+          ROOT=$(dirname "$GRADLE")
           echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
 
       - name: Setup Java
@@ -34,7 +34,10 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
 
       - name: Build APK
         run: |
