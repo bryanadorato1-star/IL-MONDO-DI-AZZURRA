@@ -294,4 +294,4 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses    
+          log-accepted-android-sdk-licenses: false
