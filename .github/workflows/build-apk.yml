@@ -54,7 +54,7 @@ jobs:
       - name: Create Android project
         run: |
           mkdir -p android/app/src/main/assets
-          cp -R source/. android/app/src/main/assets/
+          cp "$HTML" android/app/src/main/assets/index.html
           mkdir -p android/app/src/main/res/drawable
           cp app_icon.png android/app/src/main/res/drawable/app_icon.png
           mkdir -p android/app/src/main/java/com/azzurra/mondo
