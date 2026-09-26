@@ -15,17 +15,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract Android project
+      - name: Extract game
         run: |
-          mkdir -p project
+          mkdir -p source
           ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
-          unzip -q "$ZIP" -d project
+          unzip -q "$ZIP" -d source
 
-      - name: Find Gradle project
+      - name: Find HTML game
         run: |
-          GRADLE=$(find project -type f -name "gradlew" | head -n 1)
-          ROOT=$(dirname "$GRADLE")
-          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          HTML=$(find source -type f -name "*.html" | head -n 1)
+          if [ -z "$HTML" ]; then
+            echo "HTML game not found"
+            exit 1
+          fi
+          echo "HTML=$HTML" >> "$GITHUB_ENV"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -39,14 +42,112 @@ jobs:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
 
-      - name: Build APK
+      - name: Install Android packages
         run: |
-          chmod +x "$PROJECT_ROOT/gradlew"
-          cd "$PROJECT_ROOT"
-          ./gradlew assembleDebug
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          name: Il-Mondo-di-Azzurra-APK
-          path: project/**/app/build/outputs/apk/debug/app-debug.apk
+          gradle-version: "8.9"
+
+      - name: Create Android project
+        run: |
+          mkdir -p android/app/src/main/java/com/azzurra/mondo
+          mkdir -p android/app/src/main/assets
+
+          cp "$HTML" android/app/src/main/assets/index.html
+
+          cat > android/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "Il-Mondo-di-Azzurra"
+          include(":app")
+          EOF
+
+          cat > android/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.7.3' apply false
+          }
+          EOF
+
+          cat > android/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+
+          cat > android/app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.azzurra.mondo'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.azzurra.mondo'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          EOF
+
+          cat > android/app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <application
+                  android:theme="@style/AppTheme"
+                  android:label="Il Mondo di Azzurra"
+                  android:usesCleartextTraffic="true">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:screenOrientation="portrait"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+          </manifest>
+          EOF
+
+          mkdir -p android/app/src/main/res/values
+
+          cat > android/app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowFullscreen">true</item>
+                  <item name="android:colorAccent">#7C4DFF</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > android/app/src/main/java/com/azzurra/mondo/MainActivity.java <<'EOF'
+          package com.azzurra.mondo;
+
+          import android
