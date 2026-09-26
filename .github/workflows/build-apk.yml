@@ -174,9 +174,20 @@ jobs:
                   settings.setJavaScriptEnabled(true);
                   settings.setDomStorageEnabled(true);
                   settings.setAllowFileAccess(true);
+                  settings.setAllowContentAccess(true);
                   settings.setMediaPlaybackRequiresUserGesture(false);
+                  settings.setUseWideViewPort(true);
+                  settings.setLoadWithOverviewMode(true);
+                  settings.setBuiltInZoomControls(false);
+                  settings.setDisplayZoomControls(false);
+                  
+                  
+                  
+                  
 
-                  webView.setWebViewClient(new WebViewClient());
+                  webView.setFocusable(true);
+                  webView.s.etFocusableInTouchMode(true);
+                  webView.requestFocus();
                   webView.loadUrl("file:///android_asset/index.html");
 
                   setContentView(webView);
