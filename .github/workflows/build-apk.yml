@@ -57,7 +57,7 @@ jobs:
           cp -R source/. android/app/src/main/assets/
           mkdir -p android/app/src/main/res/drawable
           cp app_icon.png android/app/src/main/res/drawable/app_icon.png
-
+          mkdir -p android/app/src/main/java/com/azzurra/mondo
           
 
           cat > android/settings.gradle <<'EOF'
