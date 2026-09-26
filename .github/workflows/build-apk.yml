@@ -14,16 +14,18 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract game
         run: |
+          set -e
+
           mkdir -p source
 
           ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ZIP game not found"
+            echo "ERROR: No ZIP file found"
             exit 1
           fi
 
@@ -33,19 +35,22 @@ jobs:
 
       - name: Find HTML game
         run: |
+          set -e
+
           HTML=$(find source -type f -name "*.html" | head -n 1)
 
           if [ -z "$HTML" ]; then
-            echo "HTML game not found"
+            echo "ERROR: HTML game not found"
             exit 1
           fi
 
           echo "HTML found: $HTML"
-
           echo "HTML=$HTML" >> "$GITHUB_ENV"
 
-      - name: Prepare HTML viewport
+      - name: Fix mobile game
         run: |
+          set -e
+
           python3 - <<'PY'
           import os
           import re
@@ -55,28 +60,232 @@ jobs:
           with open(html_path, "r", encoding="utf-8") as f:
               html = f.read()
 
-          viewport = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">'
+          # -------------------------------------------------
+          # VIEWPORT
+          # -------------------------------------------------
+
+          viewport = (
+              '<meta name="viewport" '
+              'content="width=device-width, initial-scale=1.0, '
+              'maximum-scale=1.0, user-scalable=no">'
+          )
 
           if 'name="viewport"' not in html.lower():
-              if re.search(r"<head[^>]*>", html, flags=re.IGNORECASE):
-                  html = re.sub(
-                      r"(<head[^>]*>)",
-                      r"\1\n" + viewport,
-                      html,
-                      count=1,
-                      flags=re.IGNORECASE
+              match = re.search(r'</head\s*>', html, re.IGNORECASE)
+
+              if match:
+                  html = (
+                      html[:match.start()]
+                      + viewport
+                      + "\n"
+                      + html[match.start():]
                   )
               else:
                   html = viewport + "\n" + html
 
+          # -------------------------------------------------
+          # MOBILE MENU FIX
+          # -------------------------------------------------
+
+          mobile_css = r"""
+          <style id="android-mobile-fix">
+
+          html,
+          body {
+              width: 100% !important;
+              height: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+              touch-action: manipulation !important;
+              -webkit-user-select: none !important;
+              user-select: none !important;
+              -webkit-tap-highlight-color: transparent !important;
+          }
+
+          body.homeScreen {
+              overflow: hidden !important;
+          }
+
+          body.homeScreen .app {
+              width: 100% !important;
+              height: 100% !important;
+              max-width: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+          }
+
+          body.homeScreen .menuStage {
+              position: fixed !important;
+              left: 0 !important;
+              top: 0 !important;
+              right: 0 !important;
+              bottom: 0 !important;
+
+              width: 100% !important;
+              height: 100% !important;
+
+              margin: 0 !important;
+              padding: 0 !important;
+
+              overflow: hidden !important;
+              background: #000 !important;
+
+              display: block !important;
+          }
+
+          body.homeScreen .menuBoard {
+              position: absolute !important;
+
+              left: 50% !important;
+              top: 50% !important;
+
+              width: min(150vh, 100vw) !important;
+              height: min(100vh, 66.6666667vw) !important;
+
+              margin: 0 !important;
+              padding: 0 !important;
+
+              transform: translate(-50%, -50%) !important;
+
+              aspect-ratio: 3 / 2 !important;
+
+              overflow: hidden !important;
+
+              max-width: none !important;
+              max-height: none !important;
+          }
+
+          body.homeScreen .menuBoard > img {
+              position: absolute !important;
+
+              left: 0 !important;
+              top: 0 !important;
+              right: 0 !important;
+              bottom: 0 !important;
+
+              width: 100% !important;
+              height: 100% !important;
+
+              max-width: none !important;
+              max-height: none !important;
+
+              margin: 0 !important;
+              padding: 0 !important;
+
+              object-fit: fill !important;
+              object-position: center !important;
+
+              display: block !important;
+
+              pointer-events: none !important;
+          }
+
+          body.homeScreen .menuHotspot {
+              position: absolute !important;
+
+              display: block !important;
+
+              margin: 0 !important;
+              padding: 0 !important;
+
+              border: 0 !important;
+
+              background: transparent !important;
+
+              z-index: 1000 !important;
+
+              pointer-events: auto !important;
+
+              touch-action: manipulation !important;
+
+              -webkit-tap-highlight-color: transparent !important;
+
+              cursor: pointer !important;
+          }
+
+          body.homeScreen .menuHotspot:focus {
+              outline: none !important;
+          }
+
+          body.homeScreen .menuHotspot:active {
+              transform: scale(0.98) !important;
+          }
+
+          </style>
+          """
+
+          # -------------------------------------------------
+          # TOUCH FIX
+          # -------------------------------------------------
+
+          touch_js = r"""
+          <script id="android-touch-fix">
+          (function () {
+
+              function prepareTouch() {
+
+                  var selectors = [
+                      ".menuHotspot",
+                      ".menuTopSpot",
+                      "button",
+                      "a",
+                      "[role='button']"
+                  ];
+
+                  document.querySelectorAll(selectors.join(",")).forEach(function(el) {
+                      el.style.pointerEvents = "auto";
+                      el.style.touchAction = "manipulation";
+                      el.style.webkitTapHighlightColor = "transparent";
+                  });
+              }
+
+              if (document.readyState === "loading") {
+                  document.addEventListener("DOMContentLoaded", prepareTouch);
+              } else {
+                  prepareTouch();
+              }
+
+              window.addEventListener("load", prepareTouch);
+
+          })();
+          </script>
+          """
+
+          # Insert CSS before </head>
+          head_match = re.search(r'</head\s*>', html, re.IGNORECASE)
+
+          if head_match:
+              html = (
+                  html[:head_match.start()]
+                  + mobile_css
+                  + "\n"
+                  + html[head_match.start():]
+              )
+          else:
+              html = mobile_css + "\n" + html
+
+          # Insert JS before </body>
+          body_match = re.search(r'</body\s*>', html, re.IGNORECASE)
+
+          if body_match:
+              html = (
+                  html[:body_match.start()]
+                  + touch_js
+                  + "\n"
+                  + html[body_match.start():]
+              )
+          else:
+              html += touch_js
+
           with open(html_path, "w", encoding="utf-8") as f:
               f.write(html)
 
-          print("HTML viewport prepared successfully.")
+          print("Mobile HTML correction completed.")
           PY
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -98,22 +307,14 @@ jobs:
 
       - name: Create Android project
         run: |
+          set -e
 
-          mkdir -p android/app/src/main/assets
-          mkdir -p android/app/src/main/res/drawable
-          mkdir -p android/app/src/main/res/values
-          mkdir -p android/app/src/main/java/com/azzurra/mondo
+          python3 - <<'PY'
+          from pathlib import Path
 
-          cp "$HTML" android/app/src/main/assets/index.html
+          files = {
 
-          if [ -f "app_icon.png" ]; then
-            cp app_icon.png android/app/src/main/res/drawable/app_icon.png
-          else
-            echo "app_icon.png not found"
-            exit 1
-          fi
-
-          cat > android/settings.gradle <<'EOF'
+          "android/settings.gradle": r"""
           pluginManagement {
               repositories {
                   google()
@@ -134,20 +335,20 @@ jobs:
           rootProject.name = "Il-Mondo-di-Azzurra"
 
           include(":app")
-          EOF
+          """,
 
-          cat > android/build.gradle <<'EOF'
+          "android/build.gradle": r"""
           plugins {
               id 'com.android.application' version '8.7.3' apply false
           }
-          EOF
+          """,
 
-          cat > android/gradle.properties <<'EOF'
+          "android/gradle.properties": r"""
           android.useAndroidX=true
           android.nonTransitiveRClass=true
-          EOF
+          """,
 
-          cat > android/app/build.gradle <<'EOF'
+          "android/app/build.gradle": r"""
           plugins {
               id 'com.android.application'
           }
@@ -164,12 +365,13 @@ jobs:
                   versionName '1.0'
               }
           }
-          EOF
+          """,
 
-          cat > android/app/src/main/res/values/styles.xml <<'EOF'
+          "android/app/src/main/res/values/styles.xml": r"""
           <resources>
 
-              <style name="AppTheme"
+              <style
+                  name="AppTheme"
                   parent="android:style/Theme.Material.Light.NoActionBar">
 
                   <item name="android:fontFamily">sans</item>
@@ -180,9 +382,9 @@ jobs:
               </style>
 
           </resources>
-          EOF
+          """,
 
-          cat > android/app/src/main/AndroidManifest.xml <<'EOF'
+          "android/app/src/main/AndroidManifest.xml": r"""
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
               <uses-permission android:name="android.permission.INTERNET" />
@@ -192,8 +394,8 @@ jobs:
                   android:label="Il Mondo di Azzurra"
                   android:icon="@drawable/app_icon"
                   android:roundIcon="@drawable/app_icon"
-                  android:usesCleartextTraffic="true"
-                  android:hardwareAccelerated="true">
+                  android:hardwareAccelerated="true"
+                  android:usesCleartextTraffic="true">
 
                   <activity
                       android:name=".MainActivity"
@@ -210,9 +412,9 @@ jobs:
               </application>
 
           </manifest>
-          EOF
+          """,
 
-          cat > android/app/src/main/java/com/azzurra/mondo/MainActivity.java <<'EOF'
+          "android/app/src/main/java/com/azzurra/mondo/MainActivity.java": r"""
           package com.azzurra.mondo;
 
           import android.app.Activity;
@@ -276,21 +478,69 @@ jobs:
                   webView.setVerticalScrollBarEnabled(false);
                   webView.setHorizontalScrollBarEnabled(false);
 
+                  webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
                   setContentView(webView);
 
-                  webView.loadUrl("file:///android_asset/index.html");
+                  webView.loadUrl(
+                      "file:///android_asset/index.html"
+                  );
               }
           }
-          EOF
+          """
+          }
 
-            - name: Build APK
-          run: |
+          for name, content in files.items():
+              path = Path(name)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content.strip() + "\n", encoding="utf-8")
+              print("Created:", path)
+
+          PY
+
+          mkdir -p android/app/src/main/assets
+          mkdir -p android/app/src/main/res/drawable
+
+          cp "$HTML" android/app/src/main/assets/index.html
+
+          if [ ! -f "app_icon.png" ]; then
+            echo "ERROR: app_icon.png not found"
+            exit 1
+          fi
+
+          cp app_icon.png android/app/src/main/res/drawable/app_icon.png
+
+      - name: Verify Android project
+        run: |
+          set -e
+
+          echo "Checking Android project..."
+
+          test -f android/settings.gradle
+          test -f android/build.gradle
+          test -f android/gradle.properties
+          test -f android/app/build.gradle
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/assets/index.html
+          test -f android/app/src/main/res/drawable/app_icon.png
+          test -f android/app/src/main/java/com/azzurra/mondo/MainActivity.java
+
+          echo "All required files are present."
+
+      - name: Build APK
+        run: |
+          set -e
+
           cd android
+
           gradle assembleDebug
 
       - name: Find APK
         run: |
+          set -e
+
           echo "Searching for APK files..."
+
           find android -type f -name "*.apk" -print
 
       - name: Upload APK
@@ -299,9 +549,3 @@ jobs:
           name: Il-Mondo-di-Azzurra-APK
           path: android/**/*.apk
           if-no-files-found: error
-        
-          
-      
-        
-        
-
