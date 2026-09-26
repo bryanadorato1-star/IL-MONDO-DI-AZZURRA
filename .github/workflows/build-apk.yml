@@ -12,23 +12,68 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Extract game
         run: |
           mkdir -p source
+
           ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ZIP game not found"
+            exit 1
+          fi
+
+          echo "Using ZIP: $ZIP"
+
           unzip -q "$ZIP" -d source
 
       - name: Find HTML game
         run: |
           HTML=$(find source -type f -name "*.html" | head -n 1)
+
           if [ -z "$HTML" ]; then
             echo "HTML game not found"
             exit 1
           fi
+
+          echo "HTML found: $HTML"
+
           echo "HTML=$HTML" >> "$GITHUB_ENV"
+
+      - name: Prepare HTML viewport
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          html_path = os.environ["HTML"]
+
+          with open(html_path, "r", encoding="utf-8") as f:
+              html = f.read()
+
+          viewport = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">'
+
+          if 'name="viewport"' not in html.lower():
+              if re.search(r"<head[^>]*>", html, flags=re.IGNORECASE):
+                  html = re.sub(
+                      r"(<head[^>]*>)",
+                      r"\1\n" + viewport,
+                      html,
+                      count=1,
+                      flags=re.IGNORECASE
+                  )
+              else:
+                  html = viewport + "\n" + html
+
+          with open(html_path, "w", encoding="utf-8") as f:
+              f.write(html)
+
+          print("HTML viewport prepared successfully.")
+          PY
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -53,12 +98,20 @@ jobs:
 
       - name: Create Android project
         run: |
+
           mkdir -p android/app/src/main/assets
-          cp "$HTML" android/app/src/main/assets/index.html
           mkdir -p android/app/src/main/res/drawable
-          cp app_icon.png android/app/src/main/res/drawable/app_icon.png
+          mkdir -p android/app/src/main/res/values
           mkdir -p android/app/src/main/java/com/azzurra/mondo
-          
+
+          cp "$HTML" android/app/src/main/assets/index.html
+
+          if [ -f "app_icon.png" ]; then
+            cp app_icon.png android/app/src/main/res/drawable/app_icon.png
+          else
+            echo "app_icon.png not found"
+            exit 1
+          fi
 
           cat > android/settings.gradle <<'EOF'
           pluginManagement {
@@ -71,6 +124,7 @@ jobs:
 
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+
               repositories {
                   google()
                   mavenCentral()
@@ -78,6 +132,7 @@ jobs:
           }
 
           rootProject.name = "Il-Mondo-di-Azzurra"
+
           include(":app")
           EOF
 
@@ -111,20 +166,34 @@ jobs:
           }
           EOF
 
+          cat > android/app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+
+              <style name="AppTheme"
+                  parent="android:style/Theme.Material.Light.NoActionBar">
+
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowFullscreen">true</item>
+                  <item name="android:windowActionModeOverlay">true</item>
+                  <item name="android:colorAccent">#7C4DFF</item>
+
+              </style>
+
+          </resources>
+          EOF
+
           cat > android/app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
               <uses-permission android:name="android.permission.INTERNET" />
 
               <application
-              android:theme="@style/AppTheme"
-              android:label="Il Mondo di Azzurra"
-              android:icon="@drawable/app_icon"
-              android:roundIcon="@drawable/app_icon"
-              android:usesCleartextTraffic="true">
-                  
-                  
-
+                  android:theme="@style/AppTheme"
+                  android:label="Il Mondo di Azzurra"
+                  android:icon="@drawable/app_icon"
+                  android:roundIcon="@drawable/app_icon"
+                  android:usesCleartextTraffic="true"
+                  android:hardwareAccelerated="true">
 
                   <activity
                       android:name=".MainActivity"
@@ -139,25 +208,18 @@ jobs:
                   </activity>
 
               </application>
+
           </manifest>
           EOF
 
-          mkdir -p android/app/src/main/res/values
-
-          cat > android/app/src/main/res/values/styles.xml <<'EOF'
-          <resources>
-              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-                  <item name="android:fontFamily">sans</item>
-                  <item name="android:windowFullscreen">true</item>
-                  <item name="android:colorAccent">#7C4DFF</item>
-              </style>
-          </resources>
-          EOF
           cat > android/app/src/main/java/com/azzurra/mondo/MainActivity.java <<'EOF'
           package com.azzurra.mondo;
 
           import android.app.Activity;
           import android.os.Bundle;
+          import android.view.View;
+          import android.view.Window;
+          import android.view.WindowManager;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
@@ -168,32 +230,59 @@ jobs:
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
 
+                  requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+                  getWindow().setFlags(
+                      WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                      WindowManager.LayoutParams.FLAG_FULLSCREEN
+                  );
+
+                  getWindow().getDecorView().setSystemUiVisibility(
+                      View.SYSTEM_UI_FLAG_FULLSCREEN
+                      | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                      | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                      | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                      | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                      | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                  );
+
                   WebView webView = new WebView(this);
 
                   WebSettings settings = webView.getSettings();
+
                   settings.setJavaScriptEnabled(true);
                   settings.setDomStorageEnabled(true);
+
                   settings.setAllowFileAccess(true);
                   settings.setAllowContentAccess(true);
+
                   settings.setMediaPlaybackRequiresUserGesture(false);
+
                   settings.setUseWideViewPort(true);
                   settings.setLoadWithOverviewMode(true);
+
                   settings.setBuiltInZoomControls(false);
                   settings.setDisplayZoomControls(false);
-                  
-                  
-                  
-                  
+                  settings.setSupportZoom(false);
+
+                  settings.setTextZoom(100);
+
+                  webView.setWebViewClient(new WebViewClient());
 
                   webView.setFocusable(true);
                   webView.setFocusableInTouchMode(true);
                   webView.requestFocus();
-                  webView.loadUrl("file:///android_asset/index.html");
+
+                  webView.setVerticalScrollBarEnabled(false);
+                  webView.setHorizontalScrollBarEnabled(false);
 
                   setContentView(webView);
+
+                  webView.loadUrl("file:///android_asset/index.html");
               }
           }
           EOF
+
       - name: Build APK
         run: |
           cd android
