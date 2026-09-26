@@ -1,5 +1,4 @@
 
-
 on:
   workflow_dispatch:
   push:
@@ -295,3 +294,4 @@ jobs:
         with:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
+          
