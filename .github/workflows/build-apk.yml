@@ -186,7 +186,7 @@ jobs:
                   
 
                   webView.setFocusable(true);
-                  webView.s.etFocusableInTouchMode(true);
+                  webView.setFocusableInTouchMode(true);
                   webView.requestFocus();
                   webView.loadUrl("file:///android_asset/index.html");
 
